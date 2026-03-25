@@ -1,0 +1,46 @@
+def create_advanced_preprocessor_with_imputation(num_cols, cat_cols, strategy="knn"):
+    """Create robust preprocessing pipeline with advanced imputation"""
+
+    # Numeric transformers based on strategy
+    if strategy == "knn":
+        numeric_transformer = Pipeline([
+            ('imputer', KNNImputer(n_neighbors=5, weights="uniform")),
+            ('scaler', StandardScaler())
+        ])
+    elif strategy == "iterative":
+        from sklearn.experimental import enable_iterative_imputer
+        from sklearn.impute import IterativeImputer
+        numeric_transformer = Pipeline([
+            ('imputer', IterativeImputer(max_iter=10, random_state=RANDOM_STATE)),
+            ('scaler', StandardScaler())
+        ])
+    else:  # mean or median
+        numeric_transformer = Pipeline([
+            ('imputer', SimpleImputer(strategy=strategy)),
+            ('scaler', StandardScaler())
+        ])
+
+    # Categorical transformer
+    encoder_kwargs = {"handle_unknown": "ignore"}
+    if "sparse_output" in OneHotEncoder.__init__.__code__.co_varnames:
+        encoder_kwargs["sparse_output"] = False
+    else:
+        encoder_kwargs["sparse"] = False
+
+    categorical_transformer = Pipeline([
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('encoder', OneHotEncoder(**encoder_kwargs))
+    ])
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, num_cols),
+            ("cat", categorical_transformer, cat_cols)
+        ],
+        remainder="drop"
+    )
+
+    print(f"Using {strategy} imputation strategy")
+    return preprocessor
+
+preprocessor = create_advanced_preprocessor_with_imputation(num_cols, cat_cols, IMPUTATION_STRATEGY)
