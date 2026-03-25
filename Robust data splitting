@@ -1,0 +1,127 @@
+class ParticipantAwareActiveLearner:
+    """
+    Active learner that respects participant-level grouping.
+
+    All sequences from the same participant are added together to ensure
+    no participant is split across training and pool during acquisition.
+    """
+
+    def __init__(self, preprocessor, participant_col, acquisition_method="uncertainty",
+                 random_state=42):
+        self.preprocessor = preprocessor
+        self.participant_col = participant_col
+        self.acquisition_method = acquisition_method
+        self.random_state = random_state
+        self.history = {
+            'iterations': [],
+            'train_sizes': [],
+            'test_aucs': [],
+            'test_auprcs': []
+        }
+
+    def run_active_learning(self, datasets, best_params, n_queries=50, batch_size=5,
+                           early_stopping_patience=10):
+        """
+        Run active learning with participant-level acquisition.
+
+        batch_size here refers to number of PARTICIPANTS, not sequences.
+        """
+        X_train = datasets['X_initial'].copy()
+        y_train = datasets['y_initial'].copy()
+        X_pool = datasets['X_pool'].copy()
+        y_pool = datasets['y_pool'].copy()
+        X_test = datasets['X_test'].copy()
+        y_test = datasets['y_test'].copy()
+
+        # Get participant mapping for pool
+        pool_participants = X_pool[self.participant_col].unique()
+
+        best_auc = 0
+        patience_counter = 0
+        model_type = best_params.pop('model_type', 'lightgbm')
+
+        for iteration in range(n_queries):
+            # Compute class weight
+            scale_pos_weight = self._compute_scale_pos_weight(y_train)
+
+            # Create and fit pipeline
+            pipe = Pipeline([
+                ("prep", self.preprocessor),
+                ("clf", create_model(model_type, best_params, scale_pos_weight, self.random_state))
+            ])
+
+            pipe.fit(X_train.drop(columns=[self.participant_col]), y_train)
+
+            # Evaluate on test set
+            test_probs = pipe.predict_proba(X_test.drop(columns=[self.participant_col]))[:, 1]
+            test_auc = roc_auc_score(y_test, test_probs)
+            test_auprc = average_precision_score(y_test, test_probs)
+
+            self.history['iterations'].append(iteration)
+            self.history['train_sizes'].append(len(X_train))
+            self.history['test_aucs'].append(test_auc)
+            self.history['test_auprcs'].append(test_auprc)
+
+            if test_auc > best_auc:
+                best_auc = test_auc
+                patience_counter = 0
+            else:
+                patience_counter += 1
+
+            if patience_counter >= early_stopping_patience and iteration > 10:
+                print(f"\n  Early stopping at iteration {iteration}")
+                break
+
+            if len(X_pool) == 0:
+                break
+
+            # Compute acquisition scores at PARTICIPANT level
+            # First, compute scores for each sequence
+            pool_features = X_pool.drop(columns=[self.participant_col])
+            pool_probs = pipe.predict_proba(pool_features)[:, 1]
+
+            # Aggregate to participant level
+            participant_scores = {}
+            for participant in pool_participants:
+                participant_mask = X_pool[self.participant_col] == participant
+                participant_probs = pool_probs[participant_mask]
+
+                if self.acquisition_method == "uncertainty":
+                    scores = 1 - np.abs(participant_probs - 0.5)
+                    participant_scores[participant] = np.mean(scores)
+                elif self.acquisition_method == "margin":
+                    margin = 1 - np.abs(2 * participant_probs - 1)
+                    participant_scores[participant] = np.mean(margin)
+                elif self.acquisition_method == "entropy":
+                    epsilon = 1e-12
+                    probs = np.clip(participant_probs, epsilon, 1 - epsilon)
+                    entropy = -(probs * np.log(probs) + (1 - probs) * np.log(1 - probs))
+                    participant_scores[participant] = np.mean(entropy)
+                elif self.acquisition_method == "random":
+                    participant_scores[participant] = np.random.random()
+
+            # Select participants with highest scores
+            selected_participants = sorted(participant_scores, key=participant_scores.get, reverse=True)[:batch_size]
+
+            # Add ALL sequences from selected participants to training set
+            for participant in selected_participants:
+                participant_mask = X_pool[self.participant_col] == participant
+                X_train = pd.concat([X_train, X_pool[participant_mask]], ignore_index=True)
+                y_train = pd.concat([y_train, y_pool[participant_mask]], ignore_index=True)
+
+            # Remove selected participants from pool
+            X_pool = X_pool[~X_pool[self.participant_col].isin(selected_participants)].reset_index(drop=True)
+            y_pool = y_pool[~y_pool.index.isin(X_pool.index)].reset_index(drop=True)
+            pool_participants = X_pool[self.participant_col].unique()
+
+            if iteration % 10 == 0:
+                print(f"  Iter {iteration}: AUC={test_auc:.4f}, Train participants={X_train[self.participant_col].nunique()}")
+
+        return X_train, y_train, X_pool, y_pool
+
+    def _compute_scale_pos_weight(self, y):
+        n_pos = np.sum(y == 1)
+        n_neg = np.sum(y == 0)
+        if n_pos == 0:
+            return 1.0
+        return n_neg / n_pos
