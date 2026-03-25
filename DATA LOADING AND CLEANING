@@ -1,0 +1,72 @@
+class DataLoader:
+    """Handle data loading, cleaning, and participant identification."""
+
+    def __init__(self, config):
+        self.config = config
+        self.participant_col = config.PARTICIPANT_COLUMN
+        self.has_plasmablast_identifier = False
+
+    def load_and_clean(self):
+        """Load and perform initial cleaning of the antibody dataset."""
+        print("\n" + "="*80)
+        print("DATA LOADING AND CLEANING")
+        print("="*80)
+
+        try:
+            df = pd.read_csv(self.config.DATA_PATH)
+            print(f"✓ Data loaded: {df.shape[0]} samples, {df.shape[1]} features")
+        except Exception as e:
+            raise ValueError(f"Failed to load data: {e}")
+
+        # Check required columns
+        required = ["HC_CDR3", "LC_CDR3"]
+        missing_cols = [c for c in required if c not in df.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
+
+        # Check for participant column
+        if self.participant_col in df.columns:
+            self.has_plasmablast_identifier = True
+            print(f"✓ Found participant column: {self.participant_col}")
+            self._analyze_participant_structure(df)
+        else:
+            print(f"⚠️  Participant column '{self.participant_col}' not found.")
+            print("   Using sequence-level splitting (may cause data leakage).")
+            print("   Please provide participant identifiers for proper separation.")
+            self.has_plasmablast_identifier = False
+
+        # Handle target column
+        if self.config.TARGET_COLUMN not in df.columns:
+            raise ValueError(f"Target column '{self.config.TARGET_COLUMN}' not found")
+
+        # Create target
+        df = df.copy()
+        df["target"] = (df[self.config.TARGET_COLUMN] == "P").astype(int)
+
+        # Report class distribution
+        n_protected = df["target"].sum()
+        n_unprotected = len(df) - n_protected
+        prevalence = n_protected / len(df)
+        print(f"\nClass Distribution:")
+        print(f"  Protected (P): {n_protected} ({prevalence:.2%})")
+        print(f"  Unprotected (NP): {n_unprotected} ({1-prevalence:.2%})")
+
+        # Remove features with too many missing values
+        missing_per_feature = df.isnull().sum() / len(df)
+        high_missing = missing_per_feature[missing_per_feature > self.config.MISSING_VALUE_THRESHOLD].index
+        if len(high_missing) > 0:
+            print(f"\nRemoving {len(high_missing)} features with >{self.config.MISSING_VALUE_THRESHOLD*100}% missing")
+            df = df.drop(columns=high_missing)
+
+        return df
+
+    def _analyze_participant_structure(self, df):
+        """Analyze participant structure in the dataset."""
+        participant_counts = df[self.participant_col].value_counts()
+
+        print(f"\nParticipant Structure Analysis:")
+        print(f"  Total participants: {len(participant_counts)}")
+        print(f"  Total sequences: {len(df)}")
+        print(f"  Mean sequences/participant: {len(df) / len(participant_counts):.2f}")
+        print(f"  Median sequences/participant: {participant_counts.median():.0f}")
+        print(f"  Range: {participant_counts.min()} - {participant_counts.max()}")
