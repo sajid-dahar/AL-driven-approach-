@@ -1,0 +1,115 @@
+class FeatureEngineer:
+    """Extract features from antibody sequences."""
+
+    def __init__(self):
+        self.feature_names = []
+
+    def extract_all_features(self, df):
+        """Extract comprehensive features from antibody sequences."""
+        print("\n" + "="*80)
+        print("FEATURE ENGINEERING")
+        print("="*80)
+
+        # Start with a fresh DataFrame with the same index
+        features_df = pd.DataFrame(index=df.index)
+
+        # 1. Length features
+        features_df = self._add_length_features(df, features_df)
+
+        # 2. Physicochemical features
+        features_df = self._add_physicochemical_features(df, features_df)
+
+        # 3. Amino acid composition (simplified)
+        features_df = self._add_aa_composition(df, features_df)
+
+        # 4. Pattern features
+        features_df = self._add_pattern_features(df, features_df)
+
+        # 5. Gene usage (if present)
+        features_df = self._add_gene_usage(df, features_df)
+
+        # 6. SHM features (if present)
+        features_df = self._add_shm_features(df, features_df)
+
+        self.feature_names = features_df.columns.tolist()
+        print(f"\n✓ Total features: {len(self.feature_names)}")
+
+        return features_df
+
+    def _add_length_features(self, df, features_df):
+        """Add sequence length features."""
+        features_df["CDRH3_len"] = df["HC_CDR3"].astype(str).str.len().values
+        features_df["CDRL3_len"] = df["LC_CDR3"].astype(str).str.len().values
+        features_df["total_len"] = features_df["CDRH3_len"] + features_df["CDRL3_len"]
+
+        print(f"  → Added 3 length features")
+        return features_df
+
+    def _add_physicochemical_features(self, df, features_df):
+        """Add physicochemical property features."""
+        positive_aas = ['R', 'K', 'H']
+        negative_aas = ['D', 'E']
+        hydrophobic_aas = ['A', 'V', 'L', 'I', 'P', 'F', 'W', 'M']
+
+        def calc_charge(seq):
+            if pd.isna(seq) or seq == "":
+                return np.nan
+            pos = sum(seq.count(aa) for aa in positive_aas)
+            neg = sum(seq.count(aa) for aa in negative_aas)
+            return pos - neg
+
+        def calc_hydrophobic(seq):
+            if pd.isna(seq) or seq == "":
+                return np.nan
+            hydro = sum(seq.count(aa) for aa in hydrophobic_aas)
+            return hydro / len(seq) if len(seq) > 0 else np.nan
+
+        # Heavy chain
+        features_df["HC_charge"] = df["HC_CDR3"].fillna("").apply(calc_charge).values
+        features_df["HC_hydrophobic"] = df["HC_CDR3"].fillna("").apply(calc_hydrophobic).values
+
+        # Light chain
+        features_df["LC_charge"] = df["LC_CDR3"].fillna("").apply(calc_charge).values
+        features_df["LC_hydrophobic"] = df["LC_CDR3"].fillna("").apply(calc_hydrophobic).values
+
+        # Combined
+        features_df["total_charge"] = features_df["HC_charge"] + features_df["LC_charge"]
+
+        print(f"  → Added 5 physicochemical features")
+        return features_df
+
+    def _add_aa_composition(self, df, features_df):
+        """Add simplified amino acid composition features."""
+        key_aas = ['Y', 'W', 'C', 'G', 'P', 'R', 'D', 'E']
+
+        for aa in key_aas:
+            features_df[f"HC_{aa}_cnt"] = df["HC_CDR3"].fillna("").str.count(aa).values
+            features_df[f"LC_{aa}_cnt"] = df["LC_CDR3"].fillna("").str.count(aa).values
+
+        print(f"  → Added {len(key_aas) * 2} amino acid features")
+        return features_df
+
+    def _add_pattern_features(self, df, features_df):
+        """Add sequence pattern features."""
+        features_df["ywy_motif"] = df["HC_CDR3"].fillna("").str.contains("Y.W.Y", regex=False).astype(int).values
+
+        print(f"  → Added 1 pattern feature")
+        return features_df
+
+    def _add_gene_usage(self, df, features_df):
+        """Add gene usage features."""
+        gene_cols = ["IGHV", "IGHD", "IGHJ"]
+        for col in gene_cols:
+            if col in df.columns:
+                features_df[col] = df[col].fillna("Unknown").values
+                print(f"  → Added: {col}")
+        return features_df
+
+    def _add_shm_features(self, df, features_df):
+        """Add somatic hypermutation features."""
+        shm_cols = ["HC_SHM (aa)", "LC_SHM (aa)"]
+        for col in shm_cols:
+            if col in df.columns:
+                features_df[col] = df[col].values
+                print(f"  → Added: {col}")
+        return features_df
