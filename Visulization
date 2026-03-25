@@ -1,0 +1,64 @@
+def generate_comprehensive_plots(history, y_test, y_probs, y_preds):
+    """Generate comprehensive visualization suite"""
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+
+    # Plotting code remains the same as previous version...
+    # [Include the same plotting code from the previous version]
+    # 1. Learning curve
+    axes[0,0].plot(history['train_sizes'], history['test_aucs'], 'b-', label='AUROC')
+    axes[0,0].plot(history['train_sizes'], history['test_auprcs'], 'r-', label='AUPRC')
+    axes[0,0].set_xlabel('Training Set Size')
+    axes[0,0].set_ylabel('Score')
+    axes[0,0].set_title('Active Learning Progress')
+    axes[0,0].legend()
+    axes[0,0].grid(True, alpha=0.3)
+
+    # 2. ROC curve
+    fpr, tpr, _ = roc_curve(y_test, y_probs)
+    roc_auc = auc(fpr, tpr)
+    axes[0,1].plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC (AUC = {roc_auc:.2f})')
+    axes[0,1].plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    axes[0,1].set_xlabel('False Positive Rate')
+    axes[0,1].set_ylabel('True Positive Rate')
+    axes[0,1].set_title('ROC Curve')
+    axes[0,1].legend()
+    axes[0,1].grid(True, alpha=0.3)
+
+    # 3. Precision-Recall curve
+    precision, recall, _ = precision_recall_curve(y_test, y_probs)
+    auprc = average_precision_score(y_test, y_probs)
+    axes[0,2].plot(recall, precision, color='blue', lw=2, label=f'PR (AUPRC = {auprc:.2f})')
+    axes[0,2].set_xlabel('Recall')
+    axes[0,2].set_ylabel('Precision')
+    axes[0,2].set_title('Precision-Recall Curve')
+    axes[0,2].legend()
+    axes[0,2].grid(True, alpha=0.3)
+
+    # 4. Confusion matrix
+    cm = confusion_matrix(y_test, y_preds)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[1,0])
+    axes[1,0].set_xlabel('Predicted')
+    axes[1,0].set_ylabel('Actual')
+    axes[1,0].set_title('Confusion Matrix')
+
+    # 5. Probability distribution
+    axes[1,1].hist([y_probs[y_test == 0], y_probs[y_test == 1]],
+                   bins=20, alpha=0.7, label=['Unprotected', 'Protected'], color=['red', 'blue'])
+    axes[1,1].set_xlabel('Predicted Probability')
+    axes[1,1].set_ylabel('Frequency')
+    axes[1,1].set_title('Probability Distribution')
+    axes[1,1].legend()
+
+    # 6. Performance by iteration
+    axes[1,2].plot(history['iterations'], history['test_aucs'], 'o-', label='AUROC')
+    axes[1,2].set_xlabel('Iteration')
+    axes[1,2].set_ylabel('AUROC')
+    axes[1,2].set_title('Performance by Iteration')
+    axes[1,2].grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('comprehensive_analysis_clean_P4D2.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+# Run the pipeline
+if __name__ == "__main__":
+    final_model, history = main()
