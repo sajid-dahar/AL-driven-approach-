@@ -1,3 +1,46 @@
+# Include the enhanced_bootstrap_metrics and generate_comprehensive_plots functions from previous version
+def enhanced_bootstrap_metrics(y_true, y_prob, n_bootstraps=5000):
+    """Compute bootstrap confidence intervals for multiple metrics"""
+    rng = np.random.RandomState(RANDOM_STATE)
+    metrics = {'auc': [], 'auprc': [], 'f1': []}
+
+    y_true = np.array(y_true)
+    y_prob = np.array(y_prob)
+
+    for _ in range(n_bootstraps):
+        indices = rng.randint(0, len(y_true), len(y_true))
+        y_true_boot = y_true[indices]
+        y_prob_boot = y_prob[indices]
+
+        if len(np.unique(y_true_boot)) < 2:
+            continue
+
+        try:
+            metrics['auc'].append(roc_auc_score(y_true_boot, y_prob_boot))
+            metrics['auprc'].append(average_precision_score(y_true_boot, y_prob_boot))
+
+            precision, recall, thresholds = precision_recall_curve(y_true_boot, y_prob_boot)
+            f1_scores = 2 * (precision * recall) / (precision + recall + 1e-12)
+            metrics['f1'].append(np.max(f1_scores))
+
+        except Exception:
+            continue
+
+    results = {}
+    for metric, values in metrics.items():
+        if values:
+            results[metric] = {
+                'mean': np.mean(values),
+                'ci_low': np.percentile(values, 2.5),
+                'ci_high': np.percentile(values, 97.5)
+            }
+        else:
+            results[metric] = {'mean': np.nan, 'ci_low': np.nan, 'ci_high': np.nan}
+
+    return results
+---------------------------------------------------------------------
+
+
 def verify_participant_separation(datasets, participant_col):
     """
     Verify that no participant appears in multiple splits.
