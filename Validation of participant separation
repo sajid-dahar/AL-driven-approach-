@@ -1,0 +1,52 @@
+def verify_participant_separation(datasets, participant_col):
+    """
+    Verify that no participant appears in multiple splits.
+
+    Parameters:
+    -----------
+    datasets : dict
+        Dictionary containing X_initial, X_pool, X_test
+    participant_col : str
+        Name of participant column
+
+    Returns:
+    --------
+    bool : True if separation is verified
+    """
+    # Extract participants from each split
+    initial_participants = set(datasets['X_initial'][participant_col].unique())
+    pool_participants = set(datasets['X_pool'][participant_col].unique())
+    test_participants = set(datasets['X_test'][participant_col].unique())
+
+    # Check overlaps
+    initial_pool_overlap = initial_participants & pool_participants
+    initial_test_overlap = initial_participants & test_participants
+    pool_test_overlap = pool_participants & test_participants
+
+    print("\n" + "="*80)
+    print("PARTICIPANT SEPARATION VERIFICATION")
+    print("="*80)
+
+    if len(initial_pool_overlap) == 0:
+        print("  ✓ Initial vs Pool: No overlap")
+    else:
+        print(f"  ✗ Initial vs Pool: {len(initial_pool_overlap)} participants overlap!")
+
+    if len(initial_test_overlap) == 0:
+        print("  ✓ Initial vs Test: No overlap")
+    else:
+        print(f"  ✗ Initial vs Test: {len(initial_test_overlap)} participants overlap!")
+
+    if len(pool_test_overlap) == 0:
+        print("  ✓ Pool vs Test: No overlap")
+    else:
+        print(f"  ✗ Pool vs Test: {len(pool_test_overlap)} participants overlap!")
+
+    # Final assertion
+    assert len(initial_pool_overlap) == 0, "Data leakage: participants in both initial and pool"
+    assert len(initial_test_overlap) == 0, "Data leakage: participants in both initial and test"
+    assert len(pool_test_overlap) == 0, "Data leakage: participants in both pool and test"
+
+    print("\n  ✓ All splits have disjoint participants - No data leakage")
+
+    return True
