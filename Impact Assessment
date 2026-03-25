@@ -1,0 +1,107 @@
+def compare_splitting_strategies(X, y, participant_col, preprocessor, best_params):
+    """
+    Compare sequence-level vs participant-level splitting to quantify leakage impact.
+
+    Parameters:
+    -----------
+    X : pandas.DataFrame
+        Feature matrix
+    y : pandas.Series
+        Target labels
+    participant_col : str
+        Name of participant column
+    preprocessor : ColumnTransformer
+        Preprocessing pipeline
+    best_params : dict
+        Best hyperparameters
+
+    Returns:
+    --------
+    results : dict
+        Comparison results
+    """
+    from sklearn.model_selection import cross_val_score, GroupKFold
+
+    results = {
+        'sequence_level': {'auc': [], 'auprc': []},
+        'participant_level': {'auc': [], 'auprc': []}
+    }
+
+    # Sequence-level cross-validation (POTENTIAL LEAKAGE)
+    print("\n" + "="*80)
+    print("SEQUENCE-LEVEL CROSS-VALIDATION (Potential Leakage)")
+    print("="*80)
+
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    X_seq = X.drop(columns=[participant_col])
+
+    for train_idx, val_idx in skf.split(X_seq, y):
+        X_train_seq, X_val_seq = X_seq.iloc[train_idx], X_seq.iloc[val_idx]
+        y_train_seq, y_val_seq = y.iloc[train_idx], y.iloc[val_idx]
+
+        pipe = Pipeline([
+            ("prep", preprocessor),
+            ("clf", create_model(best_params['model_type'], best_params))
+        ])
+
+        pipe.fit(X_train_seq, y_train_seq)
+        y_pred = pipe.predict_proba(X_val_seq)[:, 1]
+
+        results['sequence_level']['auc'].append(roc_auc_score(y_val_seq, y_pred))
+        results['sequence_level']['auprc'].append(average_precision_score(y_val_seq, y_pred))
+
+    # Participant-level cross-validation (CORRECT)
+    print("\n" + "="*80)
+    print("PARTICIPANT-LEVEL CROSS-VALIDATION (Correct)")
+    print("="*80)
+
+    gkf = GroupKFold(n_splits=5)
+    X_part = X.drop(columns=[participant_col])
+    groups = X[participant_col]
+
+    for train_idx, val_idx in gkf.split(X_part, y, groups):
+        X_train_part, X_val_part = X_part.iloc[train_idx], X_part.iloc[val_idx]
+        y_train_part, y_val_part = y.iloc[train_idx], y.iloc[val_idx]
+
+        pipe = Pipeline([
+            ("prep", preprocessor),
+            ("clf", create_model(best_params['model_type'], best_params))
+        ])
+
+        pipe.fit(X_train_part, y_train_part)
+        y_pred = pipe.predict_proba(X_val_part)[:, 1]
+
+        results['participant_level']['auc'].append(roc_auc_score(y_val_part, y_pred))
+        results['participant_level']['auprc'].append(average_precision_score(y_val_part, y_pred))
+
+    # Summary
+    print("\n" + "="*80)
+    print("SPLITTING STRATEGY COMPARISON")
+    print("="*80)
+
+    seq_auc_mean = np.mean(results['sequence_level']['auc'])
+    seq_auc_std = np.std(results['sequence_level']['auc'])
+    part_auc_mean = np.mean(results['participant_level']['auc'])
+    part_auc_std = np.std(results['participant_level']['auc'])
+
+    seq_auprc_mean = np.mean(results['sequence_level']['auprc'])
+    seq_auprc_std = np.std(results['sequence_level']['auprc'])
+    part_auprc_mean = np.mean(results['participant_level']['auprc'])
+    part_auprc_std = np.std(results['participant_level']['auprc'])
+
+    print(f"\nSequence-level (potential leakage):")
+    print(f"  AUROC: {seq_auc_mean:.4f} ± {seq_auc_std:.4f}")
+    print(f"  AUPRC: {seq_auprc_mean:.4f} ± {seq_auprc_std:.4f}")
+
+    print(f"\nParticipant-level (correct):")
+    print(f"  AUROC: {part_auc_mean:.4f} ± {part_auc_std:.4f}")
+    print(f"  AUPRC: {part_auprc_mean:.4f} ± {part_auprc_std:.4f}")
+
+    auc_inflation = seq_auc_mean - part_auc_mean
+    auprc_inflation = seq_auprc_mean - part_auprc_mean
+
+    print(f"\nInflation due to leakage:")
+    print(f"  AUROC: +{auc_inflation:.4f} ({auc_inflation/part_auc_mean*100:.1f}%)")
+    print(f"  AUPRC: +{auprc_inflation:.4f} ({auprc_inflation/part_auprc_mean*100:.1f}%)")
+
+    return results
