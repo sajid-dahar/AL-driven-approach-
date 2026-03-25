@@ -1,0 +1,43 @@
+# Set random seeds for reproducibility
+np.random.seed(42)
+
+class Config:
+    """Configuration parameters for the entire pipeline"""
+
+    # Data paths
+    DATA_PATH = "A candidate antibody drug for prevention.csv"
+    TARGET_COLUMN = "protection status P3D"
+
+    # Participant identification - add your participant column name here
+    PARTICIPANT_COLUMN = "plasmablast_identifier"  # Update this to match your data
+
+    # Data splitting
+    TEST_SIZE = 0.20
+    INITIAL_LABEL_FRAC = 0.10
+
+    # Active learning parameters
+    N_QUERIES = 30  # Reduced for faster testing
+    BATCH_SIZE = 3  # Number of PARTICIPANTS per iteration
+    EARLY_STOPPING_PATIENCE = 10
+    ACQUISITION_METHOD = "uncertainty"
+
+    # Experimental replicates
+    N_EXPERIMENTS = 5  # Reduced for faster testing
+    RANDOM_STATE = 42
+
+    # Preprocessing
+    MISSING_VALUE_THRESHOLD = 0.25
+    IMPUTATION_STRATEGY = "knn"
+    KNN_NEIGHBORS = 5
+
+    # Model parameters
+    ENSEMBLE_METHOD = "lightgbm"
+    USE_OPTUNA = True
+    OPTUNA_TRIALS = 20  # Reduced for faster testing
+
+    # Evaluation
+    BOOTSTRAP_ITERS = 100
+    OPERATING_THRESHOLDS = [0.3, 0.5, 0.7]
+
+    # Output
+    OUTPUT_DIR = "./results_participant_level"
