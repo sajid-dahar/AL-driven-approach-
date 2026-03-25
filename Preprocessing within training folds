@@ -1,0 +1,32 @@
+def create_leakage_free_preprocessor(num_cols, cat_cols, imputation_strategy="knn"):
+    """
+    Create preprocessor that will be fitted on training data only.
+
+    This preprocessor is a TEMPLATE - no data is fitted at creation time.
+    Fitting occurs only when the pipeline is trained on training data.
+    """
+    if imputation_strategy == "knn":
+        numeric_transformer = Pipeline([
+            ('imputer', KNNImputer(n_neighbors=5, weights="uniform")),
+            ('scaler', StandardScaler())
+        ])
+    else:
+        numeric_transformer = Pipeline([
+            ('imputer', SimpleImputer(strategy=imputation_strategy)),
+            ('scaler', StandardScaler())
+        ])
+
+    categorical_transformer = Pipeline([
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+    ])
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, num_cols),
+            ("cat", categorical_transformer, cat_cols)
+        ],
+        remainder="drop"
+    )
+
+    return preprocessor
