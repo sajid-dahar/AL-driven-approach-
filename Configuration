@@ -1,0 +1,16 @@
+DATA_PATH = "A candidate antibody drug for prevention.csv"
+TARGET_COLUMN = "protection status P4D"
+INITIAL_LABEL_FRAC = 0.10
+TEST_SIZE = 0.25
+N_QUERIES = 100
+BATCH_SIZE = 200
+RANDOM_STATE = 50
+BOOTSTRAP_ITERS = 10000
+VERBOSE = True
+EARLY_STOPPING_PATIENCE = 15
+USE_OPTUNA = True
+ENSEMBLE_METHOD = 'lightgbm'
+
+# NaN handling parameters
+MISSING_VALUE_THRESHOLD = 0.3# Remove features with >50% missing values
+IMPUTATION_STRATEGY = "median"  # Options: "mean", "median", "knn", "iterative"
